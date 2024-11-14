@@ -4,6 +4,12 @@ import { useMemo, useState } from "react";
 import { createTodo, deleteTodo, toggleTodo, useTodos } from "../api";
 import styles from "../styles/Home.module.css";
 import { Todo } from "../types";
+import { Configuration, OpenAIApi } from "openai";
+
+const configuration = new Configuration({
+  apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(configuration);
 
 export const TodoList: React.FC = () => {
   const { data: todos, error } = useTodos();
@@ -24,25 +30,56 @@ export const TodoList: React.FC = () => {
   );
 };
 
-const TodoItem: React.FC<{ todo: Todo }> = ({ todo }) => (
-  <li className={styles.todo}>
-    <label
-      className={`${styles.label} ${todo.completed ? styles.checked : ""}`}
-    >
-      <input
-        type="checkbox"
-        checked={todo.completed}
-        className={`${styles.checkbox}`}
-        onChange={() => toggleTodo(todo)}
-      />
-      {todo.text}
-    </label>
+const TodoItem: React.FC<{ todo: Todo }> = ({ todo }) => {
+  const generateSubtasks = async () => {
+    try {
+      const response = await openai.createCompletion({
+        model: "gpt-4",
+        prompt: `Break down this task into smaller subtasks: "${todo.text}"`,
+        max_tokens: 150,
+        temperature: 0.7,
+      });
 
-    <button className={styles.deleteButton} onClick={() => deleteTodo(todo.id)}>
-      ✕
-    </button>
-  </li>
-);
+      const subtasks = response.data.choices[0].text
+        ?.split('\n')
+        .filter(task => task.trim().length > 0);
+
+      subtasks?.forEach(async (subtask) => {
+        await createTodo(`${subtask} (subtask of: ${todo.text})`);
+      });
+    } catch (error) {
+      console.error('Error generating subtasks:', error);
+    }
+  };
+
+  return (
+    <li className={styles.todo}>
+      <label
+        className={`${styles.label} ${todo.completed ? styles.checked : ""}`}
+      >
+        <input
+          type="checkbox"
+          checked={todo.completed}
+          className={`${styles.checkbox}`}
+          onChange={() => toggleTodo(todo)}
+        />
+        {todo.text}
+      </label>
+
+      <button 
+        className={styles.aiButton} 
+        onClick={generateSubtasks}
+        title="Generate subtasks"
+      >
+        🤖
+      </button>
+
+      <button className={styles.deleteButton} onClick={() => deleteTodo(todo.id)}>
+        ✕
+      </button>
+    </li>
+  );
+};
 
 const AddTodoInput = () => {
   const [text, setText] = useState("");
